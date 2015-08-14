@@ -20,7 +20,11 @@ def playlist_play(path):
         continue_playlist = True
         while continue_playlist:
             try:
-                if next(playlist).play():
+                item = next(playlist)
+                item.play()
+
+                if prompt_yes_no("Did you finish watching?"):
+                    item.complete()
                     continue_playlist = prompt_yes_no("Continue playlist?")
                 else:
                     continue_playlist = False
@@ -82,12 +86,9 @@ class PlaylistItem:
         else:
             subprocess.call(["vlc", "--fullscreen", self.path, "vlc://quit"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        if prompt_yes_no("Did you finish watching?"):
-            self.watched = True
-            self.playlist.save()
-            return True
-
-        return False
+    def complete(self):
+        self.watched = True
+        self.playlist.save()
 
 if __name__ == '__main__':
     main(sys.argv[1:])
