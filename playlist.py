@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import logging
 import os
 import subprocess
@@ -7,25 +9,31 @@ def main(argv):
     playlist_file = argv[0] if len(argv) > 0 else '.playlist'
 
     logging.basicConfig(level=logging.INFO)
-    playlistPlay(playlist_file)
+    playlist_play(playlist_file)
 
-def playlistPlay(path):
+def playlist_play(path):
     "Open a playlist file and start playing the unwatched items"
 
     with open(path, 'r+') as playlist_file:
         playlist = Playlist(playlist_file)
 
-        for item in playlist.unwatched():
-            if not item.play():
-                raise SystemExit()
+        continue_playlist = True
+        while continue_playlist:
+            try:
+                if next(playlist).play():
+                    continue_playlist = prompt_yes_no("Continue playlist?")
+                else:
+                    continue_playlist = False
+            except StopIteration:
+                if prompt_yes_no("Finished playlist, restart?"):
+                    playlist.reset()
+                else:
+                    continue_playlist = False
 
-            sys.stdout.write("Continue playlist? [Y/n]: ")
-            response = input().lower()
-            if response == 'n' or response == 'no':
-                raise SystemExit()
-
-        logging.info("Finished playlist")
-        playlist.reset();
+def prompt_yes_no(prompt):
+    sys.stdout.write(prompt + " [Y/n]: ")
+    response = input().lower()
+    return not (response == 'n' or response == 'no')
 
 class Playlist:
     def __init__(self, playlist_file):
@@ -38,10 +46,10 @@ class Playlist:
         return "\n".join([str(item) for item in self.items]) + "\n"
 
     def __iter__(self):
-        return self.items.__iter__()
+        return self
 
-    def unwatched(self):
-        return (item for item in self.items if not item.watched)
+    def __next__(self):
+        return next((item for item in self.items if not item.watched))
 
     def reset(self):
         for item in self.items:
@@ -70,13 +78,11 @@ class PlaylistItem:
 
         file_ext = os.path.splitext(self.path)[1]
         if file_ext == 'playlist':
-            playlistPlay(self.path)
+            playlist_play(self.path)
         else:
             subprocess.call(["vlc", "--fullscreen", self.path, "vlc://quit"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        sys.stdout.write("Did you finish watching? [Y/n]: ")
-        response = input().lower()
-        if not (response == 'n' or response == 'no'):
+        if prompt_yes_no("Did you finish watching?"):
             self.watched = True
             self.playlist.save()
             return True
