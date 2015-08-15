@@ -5,8 +5,10 @@ import os
 import subprocess
 import sys
 
+PLAYLIST_EXTENSION = '.playlist'
+
 def main(argv):
-    playlist_file = argv[0] if len(argv) > 0 else '.playlist'
+    playlist_file = argv[0] if len(argv) > 0 else PLAYLIST_EXTENSION
 
     logging.basicConfig(level=logging.INFO)
     playlist_play(playlist_file)
@@ -14,6 +16,7 @@ def main(argv):
 def playlist_play(path):
     "Open a playlist file and start playing the unwatched items"
 
+    completed = False
     with open(path, 'r+') as playlist_file:
         playlist = Playlist(playlist_file)
 
@@ -21,9 +24,7 @@ def playlist_play(path):
         while continue_playlist:
             try:
                 item = next(playlist)
-                item.play()
-
-                if prompt_yes_no("Did you finish watching?"):
+                if item.play():
                     item.complete()
                     continue_playlist = prompt_yes_no("Continue playlist?")
                 else:
@@ -32,11 +33,25 @@ def playlist_play(path):
                 if prompt_yes_no("Finished playlist, restart?"):
                     playlist.reset()
                 else:
+                    completed = True
                     continue_playlist = False
 
+    return completed
+
+def vlc_play(path):
+    "Play a file using vlc"
+
+    print(path)
+    subprocess.call(["vlc", "--fullscreen", path, "vlc://quit"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    return prompt_yes_no("Did you finish watching?")
+
 def prompt_yes_no(prompt):
+    "Prompt the user a yes/no question, default to yes"
+
     sys.stdout.write(prompt + " [Y/n]: ")
     response = input().lower()
+
     return not (response == 'n' or response == 'no')
 
 class Playlist:
@@ -66,6 +81,10 @@ class Playlist:
         self.playlist_file.write(str(self))
         self.playlist_file.flush()
 
+    def resolve_path(self, path):
+        relative_dir = os.path.dirname(self.playlist_file.name)
+        return os.path.abspath(os.path.join(relative_dir, path))
+
 class PlaylistItem:
     def __init__(self, playlist, string):
         self.playlist = playlist
@@ -78,13 +97,15 @@ class PlaylistItem:
         return " ".join(["x" if self.watched else "-", self.path])
 
     def play(self):
-        logging.info('Playing: ' + self.path);
+        path = self.playlist.resolve_path(self.path)
+        basename = os.path.basename(path)
+        extension = os.path.splitext(basename)[1]
 
-        file_ext = os.path.splitext(self.path)[1]
-        if file_ext == 'playlist':
-            playlist_play(self.path)
+        logging.info('Playing: ' + path);
+        if basename == PLAYLIST_EXTENSION or extension == PLAYLIST_EXTENSION:
+            return playlist_play(path)
         else:
-            subprocess.call(["vlc", "--fullscreen", self.path, "vlc://quit"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return vlc_play(path)
 
     def complete(self):
         self.watched = True
